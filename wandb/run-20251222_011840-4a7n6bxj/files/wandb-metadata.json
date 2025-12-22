@@ -1,0 +1,13 @@
+{
+  "os":  "Linux-6.14.0-37-generic-x86_64-with-glibc2.39",
+  "python":  "CPython 3.13.9",
+  "startedAt":  "2025-12-22T00:18:40.810781Z",
+  "program":  "/home/user/Desktop/gymEnv/env.py",
+  "codePath":  "env.py",
+  "codePathLocal":  "env.py",
+  "email":  "matus.benky@gmail.com",
+  "root":  "/home/user/Desktop/gymEnv",
+  "host":  "user-System-Product-Name",
+  "executable":  "/home/user/miniconda3/bin/python",
+  "writerId":  "zl5m4wy8c92j4jntpseldya649tajdrf"
+}

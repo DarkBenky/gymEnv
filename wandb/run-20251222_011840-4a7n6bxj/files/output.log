@@ -1,0 +1,15 @@
+Loading market data...
+Warning: Data file for ATOMUSDT not found. Skipping.
+Warning: Data file for TRXUSDT not found. Skipping.
+Warning: Data file for UNIUSDT not found. Skipping.
+Warning: Data file for ETHUSDT not found. Skipping.
+Warning: Data file for LINKUSDT not found. Skipping.
+Traceback (most recent call last):
+  File "/home/user/Desktop/gymEnv/env.py", line 223, in <module>
+    env = CustomEnv(num_of_assets=5, window=64, initial_balance=10000.0)
+  File "/home/user/Desktop/gymEnv/env.py", line 57, in __init__
+    self.X_data, self.Y_data = load_samples(batches=1024, num_of_assets=num_of_assets, window=window)
+                               ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/Desktop/gymEnv/getData.py", line 71, in load_samples
+    raise ValueError("No data files found. Please run fetch_historical_data first.")
+ValueError: No data files found. Please run fetch_historical_data first.

@@ -1,0 +1,60 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            zl5m4wy8c92j4jntpseldya649tajdrf:
+                codePath: env.py
+                codePathLocal: env.py
+                email: matus.benky@gmail.com
+                executable: /home/user/miniconda3/bin/python
+                host: user-System-Product-Name
+                os: Linux-6.14.0-37-generic-x86_64-with-glibc2.39
+                program: /home/user/Desktop/gymEnv/env.py
+                python: CPython 3.13.9
+                root: /home/user/Desktop/gymEnv
+                startedAt: "2025-12-22T00:18:40.810781Z"
+                writerId: zl5m4wy8c92j4jntpseldya649tajdrf
+        m: []
+        python_version: 3.13.9
+        t:
+            "1":
+                - 1
+                - 2
+                - 3
+                - 49
+            "2":
+                - 1
+                - 2
+                - 3
+                - 49
+            "3":
+                - 13
+                - 16
+            "4": 3.13.9
+            "5": 0.23.1
+            "12": 0.23.1
+            "13": linux-x86_64
+batch_size:
+    value: 64
+clip_range:
+    value: 0.2
+ent_coef:
+    value: 0.01
+gae_lambda:
+    value: 0.95
+gamma:
+    value: 0.99
+initial_balance:
+    value: 10000
+learning_rate:
+    value: 0.0003
+n_epochs:
+    value: 10
+n_steps:
+    value: 2048
+num_of_assets:
+    value: 5
+total_timesteps:
+    value: 50000
+window:
+    value: 64

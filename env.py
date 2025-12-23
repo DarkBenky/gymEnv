@@ -15,8 +15,8 @@ matplotlib.use('Agg')
 # CONFIGURATION
 # ============================================================================
 CONFIG = {
-    "num_of_assets": 5,
-    "window": 64,
+    "num_of_assets": 10,
+    "window": 128,
     "initial_balance": 10000.0,
     "max_steps": 500,
     "val_asset_ratio": 0.2,
@@ -33,12 +33,12 @@ CONFIG = {
     "gae_lambda": 0.95,
     "clip_range": 0.2,
     "clip_range_vf": None,
-    "ent_coef": 0.01,
+    "ent_coef": 0.05,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     
-    "total_timesteps": 200000,
-    "n_eval_episodes": 10,
+    "total_timesteps": 100_000,
+    "n_eval_episodes": 100,
 }
 # ============================================================================
 
@@ -401,9 +401,9 @@ if __name__ == "__main__":
     print(f"\nMean Return: {np.mean(final_returns):.2f}%")
     print(f"Win Rate: {sum(1 for r in final_returns if r > 0)/eval_episodes*100:.1f}%")
     
+    print("\n✅ Training complete! Check W&B dashboard for detailed metrics.")
+    print(f"   https://wandb.ai/{wandb.run.entity}/{wandb.run.project}/runs/{wandb.run.id}")
+    
     env.close()
     test_env.close()
     wandb.finish()
-    
-    print("\n✅ Training complete! Check W&B dashboard for detailed metrics.")
-    print(f"   https://wandb.ai/{wandb.run.entity}/{wandb.run.project}/runs/{wandb.run.id}")

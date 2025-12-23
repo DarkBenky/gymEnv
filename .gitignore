@@ -1,0 +1,5 @@
+*.zip
+*.csv
+wandb/
+*.log
+__pycache__/

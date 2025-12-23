@@ -48,10 +48,17 @@ def fetch_historical_data(symbol, interval, years=3):
         print(f"Error fetching data for {symbol}: {e}")
         return None
     
-def load_samples(batches = 1024, num_of_assets=10, window=64):
+def load_samples(batches = 1024, num_of_assets=10, window=64, train_split=0.8, mode='train'):
     """
     Return X n samples of window_size*num_of_assets*batches shape
     Returns Y number_of_assets*batches shape (next value close change)
+    
+    Args:
+        batches: Number of samples to generate
+        num_of_assets: Number of crypto assets to use
+        window: Size of the lookback window
+        train_split: Fraction of data to use for training (0.8 = 80% train, 20% test)
+        mode: 'train' or 'test' - determines which portion of data to use
     """
     
     # Select random n tickers from the available tickers list
@@ -76,6 +83,21 @@ def load_samples(batches = 1024, num_of_assets=10, window=64):
     if min_length < window + 1:
         raise ValueError(f"Not enough data. Need at least {window + 1} samples, but only have {min_length}")
     
+    # Calculate train/test split indices
+    split_idx = int(min_length * train_split)
+    
+    if mode == 'train':
+        start_range = 0
+        end_range = split_idx - window - 1
+        print(f"Loading TRAINING data: indices 0 to {split_idx}")
+    else:  # test mode
+        start_range = split_idx
+        end_range = min_length - window - 1
+        print(f"Loading TEST data: indices {split_idx} to {min_length}")
+    
+    if end_range <= start_range:
+        raise ValueError(f"Not enough data for {mode} set. Need more historical data.")
+    
     # Features to use for X
     features = ['open', 'high', 'low', 'close', 'volume', 'quote_asset_volume', 
                 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']
@@ -84,9 +106,9 @@ def load_samples(batches = 1024, num_of_assets=10, window=64):
     Y_samples = []
     
     for _ in range(batches):
-        # Random starting point (ensuring we have window + 1 data points)
+        # Random starting point ONLY within the allowed range (train or test)
         # Same start_idx for ALL assets so windows are aligned in time
-        start_idx = random.randint(0, min_length - window - 1)
+        start_idx = random.randint(start_range, end_range)
         
         # Collect window data for all assets using the SAME time window
         X_batch = []

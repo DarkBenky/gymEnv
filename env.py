@@ -8,24 +8,23 @@ from getData import load_samples
 import wandb
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')
 
 
 # ============================================================================
-# CONFIGURATION - Edit hyperparameters here
+# CONFIGURATION
 # ============================================================================
 CONFIG = {
-    # Environment parameters
     "num_of_assets": 5,
     "window": 64,
     "initial_balance": 10000.0,
     "max_steps": 500,
+    "val_asset_ratio": 0.2,
+    "data_seed": 42,
     
-    # Model architecture
     "policy_type": "MlpPolicy",
-    "net_arch": [1024, 512, 256, 256, 128],  # Neural network layers [layer1, layer2, layer3]
+    "net_arch": [4096, 2048, 1024, 512, 256, 256, 128],
     
-    # PPO hyperparameters
     "learning_rate": 3e-4,
     "n_steps": 2048,
     "batch_size": 64,
@@ -38,7 +37,6 @@ CONFIG = {
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     
-    # Training parameters
     "total_timesteps": 200000,
     "n_eval_episodes": 10,
 }
@@ -46,8 +44,6 @@ CONFIG = {
 
 
 class WandbCallback(BaseCallback):
-    """Custom callback for logging to Weights & Biases."""
-    
     def __init__(self, verbose=0):
         super().__init__(verbose)
         self.episode_rewards = []
@@ -83,11 +79,9 @@ class WandbCallback(BaseCallback):
 
 
 class CustomEnv(gym.Env):
-    """Crypto Trading Environment that follows gym interface."""
-    
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
     
-    def __init__(self, num_of_assets=10, window=64, initial_balance=10000.0, render_mode=None, mode='train'):
+    def __init__(self, num_of_assets=10, window=64, initial_balance=10000.0, render_mode=None, mode='train', val_asset_ratio=0.2, data_seed=42):
         super().__init__()
         
         self.num_of_assets = num_of_assets
@@ -95,28 +89,30 @@ class CustomEnv(gym.Env):
         self.initial_balance = initial_balance
         self.mode = mode
         
-        # Load all samples once during initialization
         print(f"Loading market data ({mode} mode)...")
-        self.X_data, self.Y_data = load_samples(batches=1024, num_of_assets=num_of_assets, window=window, mode=mode)
-        # X_data shape: (batches, num_assets, window, num_features)
-        # Y_data shape: (batches, num_assets) - next price change
+        self.X_data, self.Y_data = load_samples(
+            batches=1024, 
+            num_of_assets=num_of_assets, 
+            window=window, 
+            mode=mode,
+            val_asset_ratio=val_asset_ratio,
+            seed=data_seed
+        )
         
         self.num_batches = self.X_data.shape[0]
         self.actual_num_assets = self.X_data.shape[1]
-        self.num_features = self.X_data.shape[3]
+        self.actual_num_features = self.X_data.shape[3]
         
-        print(f"Loaded {self.num_batches} samples with {self.actual_num_assets} assets")
+        if self.actual_num_assets != num_of_assets:
+            raise ValueError(f"Asset count mismatch: requested {num_of_assets} assets but loaded {self.actual_num_assets}. Check that all data files exist and are loadable.")
         
-        # Action space: for each asset, predict position [-1 to 1]
-        # -1 = full short, 0 = hold/no position, 1 = full long
+        print(f"Loaded {self.num_batches} samples with {self.actual_num_assets} assets and {self.actual_num_features} features")
+        
         self.action_space = spaces.Box(
             low=-1, high=1, shape=(self.actual_num_assets,), dtype=np.float32
         )
         
-        # Observation space: flattened window data + portfolio state
-        # Window data: (num_assets * window * num_features)
-        # Portfolio state: balance + positions (num_assets) + total_value
-        obs_size = self.actual_num_assets * self.window * self.num_features + self.actual_num_assets + 2
+        obs_size = self.actual_num_assets * self.window * self.actual_num_features + self.actual_num_assets + 2
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_size,), dtype=np.float32
         )
@@ -132,16 +128,13 @@ class CustomEnv(gym.Env):
         self.total_value = initial_balance
         
     def reset(self, seed=None, options=None):
-        """Reset the environment to initial state."""
         super().reset(seed=seed)
         
-        # Reset portfolio
         self.balance = self.initial_balance
         self.positions = np.zeros(self.actual_num_assets, dtype=np.float32)
         self.total_value = self.initial_balance
         self.current_step = 0
         
-        # Select random batch
         self.current_batch_idx = np.random.randint(0, self.num_batches)
         
         # Get initial observation
@@ -150,50 +143,32 @@ class CustomEnv(gym.Env):
         return obs, {}
     
     def step(self, action):
-        """Execute one time step within the environment."""
-        # Get current price changes (targets for this step)
-        price_changes = self.Y_data[self.current_batch_idx]  # Shape: (num_assets,)
+        price_changes = self.Y_data[self.current_batch_idx]
         
-        # Calculate portfolio value before action
         old_value = self.total_value
         
-        # Execute trades based on action
-        # action[i] represents desired position in asset i as fraction of total portfolio
         desired_positions = action * self.total_value
-        
-        # Calculate position changes (simple execution, no fees for now)
         position_changes = desired_positions - self.positions
         
-        # Update balance and positions (cash required/freed)
         self.balance -= np.sum(position_changes)
         self.positions = desired_positions.copy()
         
-        # Move to next time step
         self.current_step += 1
         
-        # Apply price changes to positions
-        # positions * price_change gives profit/loss for each asset
         pnl = self.positions * price_changes
         total_pnl = np.sum(pnl)
         
-        # Update positions value after price change
         self.positions = self.positions * (1 + price_changes)
-        
-        # Calculate new total value
         self.total_value = self.balance + np.sum(self.positions)
         
-        # Reward: profit/loss as percentage of initial portfolio
         reward = (self.total_value - old_value) / self.initial_balance
         
-        # Penalize if balance goes negative (over-leveraged)
         if self.balance < 0:
             reward -= 0.1
         
-        # Check if episode is done
-        terminated = bool(self.total_value <= 0)  # Bankruptcy
+        terminated = bool(self.total_value <= 0)
         truncated = self.current_step >= self.max_steps
         
-        # Get next observation (move to next batch for next step)
         if not terminated and not truncated:
             self.current_batch_idx = (self.current_batch_idx + 1) % self.num_batches
         
@@ -211,40 +186,29 @@ class CustomEnv(gym.Env):
         return obs, reward, terminated, truncated, info
     
     def _get_observation(self):
-        """Construct observation from current state."""
-        # Get current market window
-        window_data = self.X_data[self.current_batch_idx]  # Shape: (num_assets, window, num_features)
-        
-        # Flatten window data
+        window_data = self.X_data[self.current_batch_idx]
         flattened_window = window_data.flatten()
         
-        # Portfolio state: [balance, positions..., total_value]
         portfolio_state = np.concatenate([
-            [self.balance / self.initial_balance],  # Normalized balance
-            self.positions / self.initial_balance,   # Normalized positions
-            [self.total_value / self.initial_balance]  # Normalized total value
+            [self.balance / self.initial_balance],
+            self.positions / self.initial_balance,
+            [self.total_value / self.initial_balance]
         ])
         
-        # Combine all into single observation
         obs = np.concatenate([flattened_window, portfolio_state]).astype(np.float32)
-        
         return obs
     
     def render(self):
-        """Render the environment."""
         if self.render_mode == "human":
             print(f"Step: {self.current_step}, Balance: ${self.balance:.2f}, "
                   f"Total Value: ${self.total_value:.2f}, "
                   f"Return: {((self.total_value - self.initial_balance) / self.initial_balance * 100):.2f}%")
     
     def close(self):
-        """Clean up resources."""
         pass
 
 
-# Create and check the environment
 if __name__ == "__main__":
-    # Initialize Weights & Biases
     wandb.init(
         project="crypto-trading-rl",
         config=CONFIG,
@@ -258,16 +222,16 @@ if __name__ == "__main__":
         print(f"{key:20s}: {value}")
     print("=" * 60)
     
-    # Create TRAINING environment
     env = CustomEnv(
         num_of_assets=CONFIG["num_of_assets"], 
         window=CONFIG["window"], 
         initial_balance=CONFIG["initial_balance"],
-        mode='train'
+        mode='train',
+        val_asset_ratio=CONFIG["val_asset_ratio"],
+        data_seed=CONFIG["data_seed"]
     )
     env.max_steps = CONFIG["max_steps"]
     
-    # Check if environment follows Gym API
     print("\nChecking environment...")
     check_env(env, warn=True)
     
@@ -309,16 +273,16 @@ if __name__ == "__main__":
     artifact.add_file('ppo_crypto_trading.zip')
     wandb.log_artifact(artifact)
     
-    # Evaluate the trained model on TEST data (no data leakage!)
-    print("\nEvaluating trained model on TEST set...")
+    print("\\nEvaluating trained model on VALIDATION set (unseen assets)...")
     env.close()
     
-    # Create TEST environment with unseen data
     test_env = CustomEnv(
         num_of_assets=CONFIG["num_of_assets"], 
         window=CONFIG["window"], 
         initial_balance=CONFIG["initial_balance"],
-        mode='test'
+        mode='val',
+        val_asset_ratio=CONFIG["val_asset_ratio"],
+        data_seed=CONFIG["data_seed"]
     )
     test_env.max_steps = CONFIG["max_steps"]
     
@@ -358,10 +322,10 @@ if __name__ == "__main__":
               f"Steps={step}")
     
     # Create performance charts
-    print("\nCreating performance charts...")
+    print("\\nCreating performance charts...")
     
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle('Trading Agent Performance', fontsize=16, fontweight='bold')
+    fig.suptitle('Trading Agent Performance (Validation on Unseen Assets)', fontsize=16, fontweight='bold')
     
     # Plot all episodes' portfolio values
     for i, values in enumerate(all_values):
@@ -373,7 +337,6 @@ if __name__ == "__main__":
     axes[0, 0].grid(True, alpha=0.3)
     axes[0, 0].legend(loc='best', fontsize=8)
     
-    # Chart 2: Returns Over Time
     for i, returns in enumerate(all_returns):
         axes[0, 1].plot(returns, alpha=0.6, label=f'Episode {i+1}')
     axes[0, 1].axhline(y=0, color='r', linestyle='--', label='Break-even')
@@ -383,7 +346,6 @@ if __name__ == "__main__":
     axes[0, 1].grid(True, alpha=0.3)
     axes[0, 1].legend(loc='best', fontsize=8)
     
-    # Chart 3: Final Returns Distribution
     final_returns = [returns[-1] for returns in all_returns]
     axes[1, 0].bar(range(1, eval_episodes + 1), final_returns, 
                     color=['g' if r > 0 else 'r' for r in final_returns])
@@ -393,7 +355,6 @@ if __name__ == "__main__":
     axes[1, 0].set_title('Final Returns by Episode')
     axes[1, 0].grid(True, alpha=0.3)
     
-    # Chart 4: Statistics Summary
     axes[1, 1].axis('off')
     stats_text = f"""
     Performance Statistics
@@ -424,10 +385,8 @@ if __name__ == "__main__":
     plt.savefig('performance_chart.png', dpi=300, bbox_inches='tight')
     print("Performance chart saved as 'performance_chart.png'")
     
-    # Log chart to wandb
     wandb.log({"performance_chart": wandb.Image('performance_chart.png')})
     
-    # Log summary statistics
     wandb.log({
         "eval/mean_return": np.mean(final_returns),
         "eval/median_return": np.median(final_returns),
